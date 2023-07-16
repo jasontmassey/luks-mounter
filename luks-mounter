@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+secrets_image_file=luks-image-file
+luks_name=luks-$secrets_image_file
+
+function domount
+{
+    set -x
+    local mapper_device=/dev/mapper/$luks_name
+
+    if [[ $1 == "mount" ]]; then
+        sudo losetup -f $secrets_image_file
+        local loop_device=$(losetup -j $secrets_image_file | awk -F: '{print $1}')
+        local partition="${loop_device}p1"
+        sudo partprobe $loop_device
+        sudo cryptsetup open $partition $luks_name
+
+        local this_user=$(whoami)
+        if [[ ! -d mnt ]] ; then
+            mkdir mnt
+        fi
+        sudo mount -t vfat -o uid=$this_user,gid=$this_user,rw,nosuid,nodev,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,showexec,utf8,flush,errors=remount-ro,uhelper=udisks2 $mapper_device mnt
+    else
+        sudo umount $mapper_device
+        sudo cryptsetup close $luks_name
+        local loop_device=$(losetup -j $secrets_image_file | awk -F: '{print $1}')
+        sudo losetup -d $loop_device
+    fi
+
+    set +x
+}
+
+# -----------------------------------------------------------------------------
+
+if [[ $1 == "mount" ]]; then
+    domount mount
+elif [[ $1 == "unmount" ]]; then
+    domount unmount
+else
+    echo $0 \[mount\|unmount\]
+fi
+
+# -----------------------------------------------------------------------------
+# vim:nowrap
